@@ -1,0 +1,12 @@
+{
+    "name": "sibirix/sibirix-translator",
+    "description": "Sibirix.Translator composer package for Bitrix",
+    "autoload": {
+        "psr-4": {
+            "Sibirix\\Translator\\": "src/"
+        }
+    },
+    "require": {
+        "php": "^7.0"
+    }
+}
