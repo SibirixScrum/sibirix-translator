@@ -302,16 +302,24 @@ class IBlockLocales {
         $properties = [];
         $fields = [];
 
-        $propertiesCode = array_filter($this->fieldsCode, function($field){ return 'UF_' === substr($field,0, 3); });
+        $propertiesCode = array_filter($this->fieldsCode, function ($field) {
+            return 'UF_' === substr($field, 0, 3);
+        });
 
-        $entity_id = "IBLOCK_".$this->iblockId."_SECTION";
+        $entityId = "IBLOCK_" . $this->iblockId . "_SECTION";
 
         /** @global \CUserTypeManager $USER_FIELD_MANAGER */
         global $USER_FIELD_MANAGER;
+        $arUserFields = $USER_FIELD_MANAGER->GetUserFields($entityId, $this->id, LANGUAGE_ID);
 
-        $arUserFields = $USER_FIELD_MANAGER->GetUserFields($entity_id, $this->id, LANGUAGE_ID);
-        foreach($arUserFields as $FIELD_NAME => $arUserField) {
+        foreach ($arUserFields as $arUserField) {
             if (!in_array($arUserField['FIELD_NAME'], $propertiesCode)) {
+                continue;
+            }
+
+            // Можем обработыть только тестовые поля
+            if ($arUserField['USER_TYPE_ID'] !== 'string') {
+                $this->errors[] = 'Невозможно добавить перевод для свойства: ' . $arUserField['FIELD_NAME'];
                 continue;
             }
 
@@ -322,6 +330,7 @@ class IBlockLocales {
         }
 
         $fieldsIblock = [];
+        // Из стандартных свойств раздела инфоблока работаем только с Названием и Описанием
         if (in_array('NAME', $this->fieldsCode)
             || in_array('DESCRIPTION', $this->fieldsCode)) {
             $fieldsIblock = \CIBlock::GetFields($this->iblockId);
@@ -329,42 +338,43 @@ class IBlockLocales {
 
         if (in_array('NAME', $this->fieldsCode)) {
             $fields[] = [
-                'ID' => 'NAME',
-                'IBLOCK_ID' => $this->iblockId,
-                'NAME' => $fieldsIblock['SECTION_NAME']['NAME'],
-                'CODE' => 'NAME',
-                'DEFAULT_VALUE' => '',
-                'PROPERTY_TYPE' => 'S',
-                'ROW_COUNT' => '1',
-                'COL_COUNT' => '30',
-                'LIST_TYPE' => 'L',
-                'MULTIPLE' => 'N',
-                'IS_REQUIRED' => $fieldsIblock['SECTION_NAME']['IS_REQUIRED'],
-                'VERSION' => '2',
-                'USER_TYPE' => null,
-                'USER_TYPE_SETTINGS' => null
+                'ID'                 => 'NAME',
+                'IBLOCK_ID'          => $this->iblockId,
+                'NAME'               => $fieldsIblock['SECTION_NAME']['NAME'],
+                'CODE'               => 'NAME',
+                'DEFAULT_VALUE'      => '',
+                'PROPERTY_TYPE'      => 'S',
+                'ROW_COUNT'          => '1',
+                'COL_COUNT'          => '30',
+                'LIST_TYPE'          => 'L',
+                'MULTIPLE'           => 'N',
+                'IS_REQUIRED'        => $fieldsIblock['SECTION_NAME']['IS_REQUIRED'],
+                'VERSION'            => '2',
+                'USER_TYPE'          => null,
+                'USER_TYPE_SETTINGS' => null,
             ];
         }
 
         if (in_array('DESCRIPTION', $this->fieldsCode)) {
             $fields[] = [
-                'ID' => 'DESCRIPTION',
-                'IBLOCK_ID' => $this->iblockId,
-                'NAME' => $fieldsIblock['SECTION_DESCRIPTION']['NAME'],
-                'CODE' => 'DESCRIPTION',
-                'DEFAULT_VALUE' => '',
-                'PROPERTY_TYPE' => 'S',
-                'ROW_COUNT' => '1',
-                'COL_COUNT' => '30',
-                'LIST_TYPE' => 'L',
-                'MULTIPLE' => 'N',
-                'IS_REQUIRED' => $fieldsIblock['SECTION_DESCRIPTION']['IS_REQUIRED'],
-                'VERSION' => '2',
-                'USER_TYPE' => 'HTML',
-                'USER_TYPE_SETTINGS' => ['height' => 200]
+                'ID'                 => 'DESCRIPTION',
+                'IBLOCK_ID'          => $this->iblockId,
+                'NAME'               => $fieldsIblock['SECTION_DESCRIPTION']['NAME'],
+                'CODE'               => 'DESCRIPTION',
+                'DEFAULT_VALUE'      => '',
+                'PROPERTY_TYPE'      => 'S',
+                'ROW_COUNT'          => '1',
+                'COL_COUNT'          => '30',
+                'LIST_TYPE'          => 'L',
+                'MULTIPLE'           => 'N',
+                'IS_REQUIRED'        => $fieldsIblock['SECTION_DESCRIPTION']['IS_REQUIRED'],
+                'VERSION'            => '2',
+                'USER_TYPE'          => 'HTML',
+                'USER_TYPE_SETTINGS' => ['height' => 200],
             ];
         }
 
+        // Если редактируем раздел (передан ID раздела) - заполняем значения полей
         if ($this->id) {
             $elRes = \CIBlockSection::GetByID($this->id);
 
@@ -636,6 +646,9 @@ class IBlockLocales {
             $this->iblockId = $_REQUEST['IBLOCK_ID'];
 
             $form = $this->getForm($this->iblockId, $this->type);
+            // Форма не закастомлена, выходим без обработки
+            if (empty($form)) return;
+
             $tab = array_pop($form);
             $element = array_shift($tab);
             if ($element[1] !== '{{}}') {
@@ -648,7 +661,7 @@ class IBlockLocales {
                 $nameTokens = explode('_', $name);
                 $nameTokens = array_values(array_filter($nameTokens));
 
-                preg_match('/PROP_LOC_(\d+)_(.+)__n0__VALUE__(.+)_/', $name, $matches);
+                preg_match('/PROP_(.+)_(.+)__n0__VALUE__(.+)_/', $name, $matches);
                 if (!empty($matches) && $matches[3] == 'TEXT') {
                     $nameTokens = [
                         'LOC',
@@ -721,10 +734,8 @@ class IBlockLocales {
             $mergeProperties = [];
 
             $form = $this->getForm($this->iblockId, $this->type);
-
-            if (false == $form) {
-                return;
-            }
+            // Форма не закастомлена, выходим без обработки
+            if (empty($form)) return;
 
             $tab = array_pop($form);
             $element = array_shift($tab);
@@ -790,6 +801,8 @@ class IBlockLocales {
             foreach ($mergedFields as $name => $values) {
                 if (is_array($values)) {
                     $mergedFields[$name] = '{{' . implode('}}{{', $values) . '}}';
+
+                    // todo проверку на превышение длинны строки для varchar
                 }
             }
 
@@ -855,7 +868,7 @@ class IBlockLocales {
     public static function translateParseData($string) {
         $result = preg_match_all('#(?<={{)([a-z]{2}):([\w\s\S]*)(?=}})#mU', $string, $matches, PREG_SET_ORDER);
         if ($result === false || $result == 0 || empty($matches)) {
-            return $string;
+            return [LANGUAGE_ID => $string];
         }
 
         $langContent = [];
