@@ -1,0 +1,2 @@
+deploy:
+  script: sudo -u nobody /home/gitlab-runner/sibirix-core.sh $CI_PROJECT_NAMESPACE $CI_PROJECT_NAME $GITLAB_USER_EMAIL
