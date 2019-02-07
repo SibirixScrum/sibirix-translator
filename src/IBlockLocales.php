@@ -27,6 +27,8 @@ class IBlockLocales {
     private $errors = [];
     private $tabControl;
 
+    private $fieldTemplatesDir;
+
     /**
      * IBlockLocales constructor.
      * @throws SystemException
@@ -34,6 +36,7 @@ class IBlockLocales {
      * @throws ObjectPropertyException
      */
     private function __construct() {
+        $this->fieldTemplatesDir = __DIR__ . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR;
         $this->loadLangData();
     }
 
@@ -407,7 +410,6 @@ class IBlockLocales {
             $errors = [];
             $properties = array_filter($properties, function($property) use ($propertiesId, &$errors) {
                 if (!in_array($property['ID'], $propertiesId)) {
-                    $errors[] = 'Невозможно добавить перевод для свойства: ' . $property['NAME'];
                     return false;
                 }
                 // Можем обработыть только тестовые поля
@@ -491,7 +493,7 @@ class IBlockLocales {
                         $fields[$index]['VALUE_TYPE'] = $elFields[$field['CODE'] . '_TYPE'];
                     }
 
-                    $fields[$index]['VALUES_BY_LANG'] = $this->valuesByLang(['VALUE' => $elFields[$field['CODE']]]);
+                    $fields[$index]['VALUES_BY_LANG'] = $this->valuesByLang(['VALUE' => $elFields['~' . $field['CODE']]]);
                 }
             }
 
@@ -570,17 +572,19 @@ class IBlockLocales {
      * @param bool $hidden
      */
     protected function addField($tabControl, $prop, $hidden = false) {
-        $customFieldId = $prop["ID"];
+        // Эти 2 переменные используются внутри include'ящихся файлов
+        /** @noinspection PhpUnusedLocalVariableInspection */
+        $customFieldId   = $prop["ID"];
+        /** @noinspection PhpUnusedLocalVariableInspection */
         $customFieldName = 'LOC_' . $prop["ID"];
-        $baseDir = __DIR__ . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR;
 
         if (isset($prop['ENTITY_ID'])) {
-            include ($baseDir . 'user_fields.php');
+            include ($this->fieldTemplatesDir . 'user_fields.php');
         } else {
             if ($hidden) {
-                include ($baseDir . 'prop_common_hidden.php');
+                include ($this->fieldTemplatesDir . 'prop_common_hidden.php');
             } else {
-                include ($baseDir . 'prop_common.php');
+                include ($this->fieldTemplatesDir . 'prop_common.php');
             }
         }
 
@@ -594,10 +598,13 @@ class IBlockLocales {
      * @param bool $hidden
      */
     protected function addError($tabControl, $errorText) {
+        // Эти 2 переменные (+ параметр $errorText) используются внутри include'ящихся файлов
+        /** @noinspection PhpUnusedLocalVariableInspection */
         $customFieldId = 1000000 + rand(1, 1000000); // todo
+        /** @noinspection PhpUnusedLocalVariableInspection */
         $customFieldName = 'LOC_' . $customFieldId;
-        $baseDir = __DIR__ . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR;
-        include ($baseDir . 'error_text.php');
+
+        include ($this->fieldTemplatesDir . 'error_text.php');
 
         $newField = $customFieldId;
         $tabControl->arFields[$newField] = $tabControl->tabs[$tabControl->tabIndex]['FIELDS'][$newField];
@@ -608,6 +615,7 @@ class IBlockLocales {
      * @throws SystemException
      */
     protected function beforeProlog() {
+        // Обрабатывать только внутри админки
         if (!defined('ADMIN_SECTION') || ADMIN_SECTION !== true) return;
 
         $bxRequest = Application::getInstance()->getContext()->getRequest();
@@ -738,7 +746,7 @@ class IBlockLocales {
                 if ('PROP' === $nameTokens[0] && 'LOC' === $nameTokens[1]) {
                     array_splice($nameTokens, 1, 1);
                 }
-                if ('PROP' === $nameTokens[0] && is_numeric($nameTokens[1])
+                if ('PROP' === $nameTokens[0] && isset($this->languages[$nameTokens[1]])
                     && (is_numeric($nameTokens[2])
                         || (in_array($nameTokens[2] . '_' . $nameTokens[3], ['PREVIEW_TEXT', 'DETAIL_TEXT'])))
                 ) {
