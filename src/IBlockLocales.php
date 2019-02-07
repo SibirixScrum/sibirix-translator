@@ -1,6 +1,6 @@
 <?
 
-namespace Sibirix\Main\Model;
+namespace Sibirix\Translator;
 
 use Bitrix\Main\Application;
 use Bitrix\Main\ArgumentException;
@@ -13,7 +13,7 @@ use Bitrix\Main\SystemException;
 
 /**
  * Class IBlockLocales
- * @package Sibirix\Main\Model
+ * @package Sibirix\Translator
  */
 class IBlockLocales {
     private $id;
@@ -864,5 +864,14 @@ class IBlockLocales {
         }
 
         return trim($langContent['default']);
+    }
+
+    /**
+     * Короткий алиас на метод перевода
+     * @param string $str
+     * @return mixed
+     */
+    public static function t($str = '') {
+        return static::t($str);
     }
 }
