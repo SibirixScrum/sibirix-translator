@@ -5,7 +5,6 @@ namespace Sibirix\Translator;
 use Bitrix\Main\Application;
 use Bitrix\Main\ArgumentException;
 use Bitrix\Main\DB\Exception;
-use Bitrix\Main\EventManager;
 use Bitrix\Main\Localization\LanguageTable;
 use Bitrix\Main\ObjectPropertyException;
 use Bitrix\Main\SiteTable;
@@ -28,6 +27,8 @@ class IBlockLocales {
     private $tabControl;
 
     private $fieldTemplatesDir;
+
+    const TAB_NAME = '{{}}';
 
     /**
      * IBlockLocales constructor.
@@ -133,7 +134,7 @@ class IBlockLocales {
         foreach ($tabs as $tab) {
             if ('seo_adv_seo_adv' === $tab['DIV']) continue;
 
-            if ('{{}}' == $tab['TAB']) {
+            if ($tab['TAB'] == static::TAB_NAME) {
                 $translateTab = $tab;
                 continue;
             }
@@ -179,37 +180,27 @@ class IBlockLocales {
         foreach ($this->properties as $index => $field) {
             if ($field['USER_TYPE_ID'] == 'string' && $field['SETTINGS']['ROWS'] > 1) {
                 $this->properties[$index] = [
-                    'ID' => $field['XML_ID'],
-                    'IBLOCK_ID' => 4,
-                    'NAME' => $field['EDIT_FORM_LABEL'],
-                    'CODE' => $field['XML_ID'],
-                    'DEFAULT_VALUE' => '',
-                    'PROPERTY_TYPE' => 'S',
-                    'ROW_COUNT' => '1',
-                    'COL_COUNT' => '30',
-                    'LIST_TYPE' => 'L',
-                    'MULTIPLE' => 'N',
-                    'IS_REQUIRED' => 'N',
-                    'VERSION' => '2',
-                    'USER_TYPE' => 'HTML',
+                    'ID'                 => $field['XML_ID'],
+                    'IBLOCK_ID'          => 4,
+                    'NAME'               => $field['EDIT_FORM_LABEL'],
+                    'CODE'               => $field['XML_ID'],
+                    'DEFAULT_VALUE'      => '',
+                    'PROPERTY_TYPE'      => 'S',
+                    'ROW_COUNT'          => '1',
+                    'COL_COUNT'          => '30',
+                    'LIST_TYPE'          => 'L',
+                    'MULTIPLE'           => 'N',
+                    'IS_REQUIRED'        => 'N',
+                    'VERSION'            => '2',
+                    'USER_TYPE'          => 'HTML',
                     'USER_TYPE_SETTINGS' => [
-                        'height' => 200
+                        'height' => 200,
                     ],
-                    'VALUE_TYPE' => 'html',
-                    'VALUES_BY_LANG' => $field['VALUES_BY_LANG']
+                    'VALUE_TYPE'         => 'html',
+                    'VALUES_BY_LANG'     => $field['VALUES_BY_LANG'],
                 ];
             }
         }
-
-        // todo ???
-        $eventMeta = [
-            'MESSAGE_ID' => "sibirix.base",
-            'FROM_MODULE_ID' => "adminTabAddField"
-        ];
-
-        // todo ???
-        $list = EventManager::getInstance()->findEventHandlers("sibirix.base", "OnAdminTabAddFields" . "_" . $this->iblockId . "_" . $this->type);
-        $list = array_map(function($item) use ($eventMeta) { return array_merge($item, $eventMeta); }, $list);
 
         // Добавляем в форму табы для каждого языка
         foreach ($this->languages as $langCode => $langName) {
@@ -243,12 +234,8 @@ class IBlockLocales {
                 $this->addField($tabControl, $this->parseValue($field, $langCode));
             }
 
-            foreach ($this->errors as $errorText) {
-                $this->addError($tabControl, $errorText);
-            }
-
-            foreach ($list as $arEvent) {
-                ExecuteModuleEventEx($arEvent, [$tabControl, $langCode, $this->id]);
+            foreach ($this->errors as $ind =>$errorText) {
+                $this->addError($tabControl, $ind, $errorText);
             }
         }
     }
@@ -266,28 +253,21 @@ class IBlockLocales {
         $value = $field['VALUES_BY_LANG'][$lang];
 
         if (isset($field['VALUE_TYPE'])) {
-            $field['VALUE'] = [
-                'n0' => ['TEXT' => $value, 'TYPE' => $field['VALUE_TYPE']]
-            ];
+            $field['VALUE'] =
+            $field['~VALUE'] =
+                ['n0' => ['TEXT' => $value, 'TYPE' => $field['VALUE_TYPE']]];
 
-            $field['~VALUE'] = [
-                'n0' => ['TEXT' => $value, 'TYPE' => $field['VALUE_TYPE']]
-            ];
         } else {
-            $field['VALUE'] = [
-                'n0' => $value
-            ];
-
-            $field['~VALUE'] = [
-                'n0' => $value
-            ];
+            $field['VALUE'] =
+            $field['~VALUE'] =
+                ['n0' => $value];
         }
 
         return $field;
     }
 
     /**
-     * todo ???
+     *
      */
     protected function prepareForSection() {
         if (0 === $this->iblockId && 0 !== $this->id) {
@@ -557,7 +537,7 @@ class IBlockLocales {
      * @param $raw
      * @return mixed
      */
-    public function unPackIblockFormSettings($raw) {
+    public static function unPackIblockFormSettings($raw) {
         return array_reduce(
             explode('--;--', trim($raw['tabs'], "-;")),
             function($candy, $item) {
@@ -576,10 +556,10 @@ class IBlockLocales {
      * @param $type
      * @return bool|mixed
      */
-    public function getForm($iblockId, $type) {
+    public static function getForm($iblockId, $type) {
         $settings = \CUserOptions::GetOption('form', 'form_' . $type . '_' . $iblockId, null, false);
         if ($settings) {
-            return $this->unPackIblockFormSettings($settings);
+            return static::unPackIblockFormSettings($settings);
         }
 
         return false;
@@ -613,12 +593,13 @@ class IBlockLocales {
 
     /**
      * @param $tabControl
+     * @param $index
      * @param $errorText
      */
-    protected function addError($tabControl, /** @noinspection PhpUnusedParameterInspection */ $errorText) {
+    protected function addError($tabControl, $index, /** @noinspection PhpUnusedParameterInspection */ $errorText) {
         // Эти 2 переменные (+ параметр $errorText) используются внутри include'ящихся файлов
         /** @noinspection PhpUnusedLocalVariableInspection */
-        $customFieldId = 1000000 + rand(1, 1000000); // todo
+        $customFieldId = 1000000 + $index;
         /** @noinspection PhpUnusedLocalVariableInspection */
         $customFieldName = 'LOC_' . $customFieldId;
 
@@ -645,13 +626,13 @@ class IBlockLocales {
             $this->type = 'section';
             $this->iblockId = $_REQUEST['IBLOCK_ID'];
 
-            $form = $this->getForm($this->iblockId, $this->type);
+            $form = static::getForm($this->iblockId, $this->type);
             // Форма не закастомлена, выходим без обработки
             if (empty($form)) return;
 
             $tab = array_pop($form);
             $element = array_shift($tab);
-            if ($element[1] !== '{{}}') {
+            if ($element[1] !== static::TAB_NAME) {
                 return;
             }
 
@@ -671,14 +652,9 @@ class IBlockLocales {
                 }
 
                 if ('LOC' === $nameTokens[0]) {
-                    if ('UF' === $nameTokens[2]) {
-                        $nameTokens[2] .= '_' . $nameTokens[3];
-                    }
-                    if (!is_array($value)) {
-                        $mergeFields[$nameTokens[1]][$nameTokens[2]] = $value;
-                    } else {
-                        $mergeFields[$nameTokens[1]][$nameTokens[2]] = reset($value);
-                    }
+                    if ('UF' === $nameTokens[2]) $nameTokens[2] .= '_' . $nameTokens[3];
+                    if (is_array($value)) $value = reset($value);
+                    $mergeFields[$nameTokens[1]][$nameTokens[2]] = $value;
                 }
 
                 if ('PROP' === $nameTokens[0]
@@ -686,11 +662,9 @@ class IBlockLocales {
                     && in_array($nameTokens[2], ['DESCRIPTION'])
                 ) {
                     if (in_array($nameTokens[2], ['DESCRIPTION'])) {
-                        if ('TYPE' === $nameTokens[5]) {
-                            $mergeFields[$nameTokens[1]][$nameTokens[2] . '_TYPE'] = $value;
-                        } else {
-                            $mergeFields[$nameTokens[1]][$nameTokens[2]] = $value;
-                        }
+                        $key = $nameTokens[2];
+                        if ('TYPE' === $nameTokens[5]) $key .= '_TYPE';
+                        $mergeFields[$nameTokens[1]][$key] = $value;
                     }
                 }
             }
@@ -708,9 +682,7 @@ class IBlockLocales {
             }
 
 
-            $fields = array_map(function($item) {
-                return $item[0];
-            }, $tab);
+            $fields = array_map(function($item) { return $item[0]; }, $tab);
 
             foreach ($mergedFields as $name => $values) {
                 if (is_array($values)) {
@@ -733,13 +705,13 @@ class IBlockLocales {
             $mergeFields = [];
             $mergeProperties = [];
 
-            $form = $this->getForm($this->iblockId, $this->type);
+            $form = static::getForm($this->iblockId, $this->type);
             // Форма не закастомлена, выходим без обработки
             if (empty($form)) return;
 
             $tab = array_pop($form);
             $element = array_shift($tab);
-            if ($element[1] !== '{{}}') {
+            if ($element[1] !== static::TAB_NAME) {
                 return;
             }
 
@@ -765,23 +737,20 @@ class IBlockLocales {
                 if ('PROP' === $nameTokens[0] && 'LOC' === $nameTokens[1]) {
                     array_splice($nameTokens, 1, 1);
                 }
-                if ('PROP' === $nameTokens[0] && isset($this->languages[$nameTokens[1]])
-                    && (is_numeric($nameTokens[2])
-                        || (in_array($nameTokens[2] . '_' . $nameTokens[3], ['PREVIEW_TEXT', 'DETAIL_TEXT'])))
+
+                if (
+                    'PROP' === $nameTokens[0] && isset($this->languages[$nameTokens[1]]) && (is_numeric($nameTokens[2])
+                    || (in_array($nameTokens[2] . '_' . $nameTokens[3], ['PREVIEW_TEXT', 'DETAIL_TEXT'])))
                 ) {
 
                     if (in_array($nameTokens[2] . '_' . $nameTokens[3], ['PREVIEW_TEXT', 'DETAIL_TEXT'])) {
-                        if ('TYPE' === $nameTokens[6]) {
-                            $mergeFields[$nameTokens[1]][$nameTokens[2] . '_' . $nameTokens[3] . '_TYPE'] = $value;
-                        } else {
-                            $mergeFields[$nameTokens[1]][$nameTokens[2] . '_' . $nameTokens[3]] = $value;
-                        }
+                        $key = $nameTokens[2] . '_' . $nameTokens[3];
+                        if ('TYPE' === $nameTokens[6]) $key .= '_TYPE';
+                        $mergeFields[$nameTokens[1]][$key] = $value;
                     } else {
-                        if ('TYPE' === $nameTokens[5]) {
-                            $mergeProperties[$nameTokens[1]][$nameTokens[2]]['TYPE'] = $value;
-                        } else {
-                            $mergeProperties[$nameTokens[1]][$nameTokens[2]]['TEXT'] = $value;
-                        }
+                        $key = 'TEXT';
+                        if ('TYPE' === $nameTokens[5]) $key = 'TYPE';
+                        $mergeProperties[$nameTokens[1]][$nameTokens[2]][$key] = $value;
                     }
                 }
             }
@@ -901,6 +870,6 @@ class IBlockLocales {
      * @return mixed
      */
     public static function t($str = '') {
-        return static::t($str);
+        return static::translate($str);
     }
 }
