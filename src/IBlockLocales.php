@@ -79,7 +79,12 @@ class IBlockLocales {
     protected function loadLangData() {
         $bxSites = new SiteTable();
         $languageCodes = [];
-        $sites = $bxSites->getList(['group' => ['LANGUAGE_ID'], 'select' => ['LANGUAGE_ID']])->fetchAll();
+
+        $sites = $bxSites->getList([
+            'group'  => ['LANGUAGE_ID'],
+            'select' => ['LANGUAGE_ID'],
+        ])->fetchAll();
+
         foreach ($sites as $site) {
             $languageCodes[] = $site['LANGUAGE_ID'];
         }
@@ -89,7 +94,11 @@ class IBlockLocales {
         }
 
         $languageTable = new LanguageTable();
-        $languageData = $languageTable->getList(['filter' => ['LID' => $languageCodes]])->fetchAll();
+        $languageData = $languageTable->getList([
+            'filter' => ['LID' => $languageCodes],
+            'order'  => ['SORT' => 'asc']
+        ])->fetchAll();
+
         foreach ($languageData as $language) {
             $this->languages[$language['LID']] = $language['NAME'];
         }
