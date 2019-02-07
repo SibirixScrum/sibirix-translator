@@ -594,10 +594,9 @@ class IBlockLocales {
 
     /**
      * @param $tabControl
-     * @param $prop
-     * @param bool $hidden
+     * @param $errorText
      */
-    protected function addError($tabControl, $errorText) {
+    protected function addError($tabControl, /** @noinspection PhpUnusedParameterInspection */ $errorText) {
         // Эти 2 переменные (+ параметр $errorText) используются внутри include'ящихся файлов
         /** @noinspection PhpUnusedLocalVariableInspection */
         $customFieldId = 1000000 + rand(1, 1000000); // todo
