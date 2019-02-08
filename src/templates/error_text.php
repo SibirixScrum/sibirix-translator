@@ -1,9 +1,21 @@
 <?
+/* @var $tabControl */
+/* @var $index */
+/* @var $errorText */
+/* @var $customFieldId */
+/* @var $customFieldName */
+
 $tabControl->BeginCustomField($customFieldId, $errorText, false);
 ?>
-<tr id="tr_<?echo $customFieldId ?>"<?if ($prop["PROPERTY_TYPE"]=="F"):?> class="adm-detail-file-row"<?endif?>>
-	<td class="adm-detail-valign-top" width="40%"></td>
-	<td width="60%"><?= $errorText ?></td>
+<tr id="tr_<?= $customFieldId ?>">
+	<td colspan="2">
+        <div class="adm-info-message-wrap adm-info-message-red">
+            <div class="adm-info-message">
+                <?= $errorText ?>
+                <div class="adm-info-message-icon"></div>
+            </div>
+        </div>
+    </td>
 </tr>
 <?
 $tabControl->EndCustomField($customFieldId, $hidden);
