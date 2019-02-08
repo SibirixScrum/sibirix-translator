@@ -39,6 +39,21 @@ class IBlockLocales {
     private function __construct() {
         $this->fieldTemplatesDir = __DIR__ . DIRECTORY_SEPARATOR . 'templates' . DIRECTORY_SEPARATOR;
         $this->loadLangData();
+
+        $bxRequest = Application::getInstance()->getContext()->getRequest();
+        $requestedPage = $bxRequest->getRequestedPage();
+
+        switch ($requestedPage) {
+            case '/bitrix/admin/iblock_section_edit.php':
+                $this->type = 'section';
+                break;
+            case '/bitrix/admin/iblock_element_edit.php':
+                $this->type = 'element';
+                break;
+        }
+
+        $this->id       = (int)$_REQUEST['ID'];
+        $this->iblockId = (int)$_REQUEST['IBLOCK_ID'];
     }
 
     /**
@@ -61,7 +76,9 @@ class IBlockLocales {
      * @throws SystemException
      */
     public static function onBeforeProlog() {
-        self::getInstance()->beforeProlog();
+        // Обрабатывать только внутри админки
+        if (!defined('ADMIN_SECTION') || ADMIN_SECTION !== true) return;
+        static::getInstance()->beforeProlog();
     }
 
     /**
@@ -69,7 +86,9 @@ class IBlockLocales {
      * @throws SystemException
      */
     public static function onAdminTabControlBegin(\CAdminTabControl $tabControl) {
-        self::getInstance()->adminTabControlBegin($tabControl);
+        // Обрабатывать только внутри админки
+        if (!defined('ADMIN_SECTION') || ADMIN_SECTION !== true) return;
+        static::getInstance()->adminTabControlBegin($tabControl);
     }
 
     /**
@@ -107,34 +126,19 @@ class IBlockLocales {
 
     /**
      * @param \CAdminTabControl $tabControl
-     * @throws SystemException
      */
     protected function adminTabControlBegin(\CAdminTabControl $tabControl) {
+        if (!$this->type) return;
+
         $this->tabControl = $tabControl;
 
-        $this->type = null;
-        $bxRequest = Application::getInstance()->getContext()->getRequest();
-        $requestedPage = $bxRequest->getRequestedPage();
-
-        switch ($requestedPage) {
-            case '/bitrix/admin/iblock_section_edit.php':
-                $this->type = 'section';
-                break;
-            case '/bitrix/admin/iblock_element_edit.php':
-                $this->type = 'element';
-                break;
-            default:
-                return;
-        }
-
-        $tabs = $tabControl->tabs;
-
-        $tmpTabs = [];
+        $tabs         = $tabControl->tabs;
+        $tmpTabs      = [];
         $translateTab = false;
         foreach ($tabs as $tab) {
             if ('seo_adv_seo_adv' === $tab['DIV']) continue;
 
-            if ($tab['TAB'] == static::TAB_NAME) {
+            if ($tab['TAB'] === static::TAB_NAME) {
                 $translateTab = $tab;
                 continue;
             }
@@ -147,10 +151,7 @@ class IBlockLocales {
 
         $tabControl->tabs = $tmpTabs;
 
-        $this->id = (int)$bxRequest->get('ID');
-        $this->iblockId = (int)$bxRequest->get('IBLOCK_ID');
-
-        $this->fieldsCode = array_map(function($field){ return $field['id']; }, $translateTab['FIELDS']);
+        $this->fieldsCode = array_map(function($field) { return $field['id']; }, $translateTab['FIELDS']);
 
         switch ($this->type) {
             case 'section':
@@ -163,7 +164,7 @@ class IBlockLocales {
 
         // На вкладку переводов не добавлены никакие поля, которые мы можем обработать
         // Возвращаем не изменённый таб и выходим
-        if (0 == count($this->properties) && 0 == count($this->fields)) {
+        if (!count($this->properties) && !count($this->fields)) {
             $tabControl->tabs[] = $translateTab;
             return;
         }
@@ -178,7 +179,7 @@ class IBlockLocales {
         }
 
         foreach ($this->properties as $index => $field) {
-            if ($field['USER_TYPE_ID'] == 'string' && $field['SETTINGS']['ROWS'] > 1) {
+            if ($field['USER_TYPE_ID'] === 'string' && $field['SETTINGS']['ROWS'] > 1) {
                 $this->properties[$index] = [
                     'ID'                 => $field['XML_ID'],
                     'IBLOCK_ID'          => 4,
@@ -417,7 +418,7 @@ class IBlockLocales {
                     return false;
                 }
 
-                if ($property['PROPERTY_TYPE'] == 'S') {
+                if ($property['PROPERTY_TYPE'] === 'S') {
                     // Из кастомных типов полей обрабатываем только HTML/текст
                     if (!empty($property['USER_TYPE']) && $property['USER_TYPE'] != 'HTML') {
                         $errors[] = 'Невозможно добавить перевод для свойства: ' . $property['NAME'];
@@ -614,218 +615,223 @@ class IBlockLocales {
      * @throws SystemException
      */
     protected function beforeProlog() {
-        // Обрабатывать только внутри админки
-        if (!defined('ADMIN_SECTION') || ADMIN_SECTION !== true) return;
-
         $bxRequest = Application::getInstance()->getContext()->getRequest();
-        $requestedPage = $bxRequest->getRequestedPage();
         if ('POST' !== $bxRequest->getRequestMethod()) return;
 
-        if ('/bitrix/admin/iblock_section_edit.php' === $requestedPage) {
+        if ($this->type === 'section') {
+            $this->processForSection();
+        } elseif ($this->type === 'element') {
+            $this->processForElement();
+        }
+    }
 
-            $this->type = 'section';
-            $this->iblockId = $_REQUEST['IBLOCK_ID'];
+    /**
+     * @throws SystemException
+     */
+    protected function processForSection() {
+        $bxRequest = Application::getInstance()->getContext()->getRequest();
+        $mergeFields = [];
 
-            $form = static::getForm($this->iblockId, $this->type);
-            // Форма не закастомлена, выходим без обработки
-            if (empty($form)) return;
+        $form = static::getForm($this->iblockId, $this->type);
+        // Форма не закастомлена, выходим без обработки
+        if (empty($form)) return;
 
-            $tab = array_pop($form);
-            $element = array_shift($tab);
-            if ($element[1] !== static::TAB_NAME) {
-                return;
-            }
-
-            $mergeFields = [];
-
-            foreach ($bxRequest->getPostList() as $name => $value) {
-                $nameTokens = explode('_', $name);
-                $nameTokens = array_values(array_filter($nameTokens));
-
-                preg_match('/PROP_(.+)_(.+)__n0__VALUE__(.+)_/', $name, $matches);
-                if (!empty($matches) && $matches[3] == 'TEXT') {
-                    $nameTokens = [
-                        'LOC',
-                        $matches[1],
-                        $matches[2],
-                    ];
-                }
-
-                if ('LOC' === $nameTokens[0]) {
-                    if ('UF' === $nameTokens[2]) $nameTokens[2] .= '_' . $nameTokens[3];
-                    if (is_array($value)) $value = reset($value);
-                    $mergeFields[$nameTokens[1]][$nameTokens[2]] = $value;
-                }
-
-                if ('PROP' === $nameTokens[0]
-                    && is_numeric($nameTokens[1])
-                    && in_array($nameTokens[2], ['DESCRIPTION'])
-                ) {
-                    if (in_array($nameTokens[2], ['DESCRIPTION'])) {
-                        $key = $nameTokens[2];
-                        if ('TYPE' === $nameTokens[5]) $key .= '_TYPE';
-                        $mergeFields[$nameTokens[1]][$key] = $value;
-                    }
-                }
-            }
-
-            $mergedFields = [];
-            foreach ($mergeFields as $langId => $fields) {
-                foreach ($fields as $name => $value) {
-                    if (in_array($name, ['DESCRIPTION_TYPE'])) {
-                        $mergedFields[$name] = $value; // TODO check type
-                        continue;
-                    }
-
-                    $mergedFields[$name][] = $langId . ':' . $value;
-                }
-            }
-
-
-            $fields = array_map(function($item) { return $item[0]; }, $tab);
-
-            foreach ($mergedFields as $name => $values) {
-                if (is_array($values)) {
-                    $mergedFields[$name] = '{{' . implode('}}{{', $values) . '}}';
-                }
-            }
-            foreach ($mergedFields as $fieldName => $value) {
-                if (in_array($fieldName, $fields)) {
-                    $GLOBALS[$fieldName] = $value;
-                    $_POST[$fieldName] = $value;
-                }
-            }
-
+        $tab = array_pop($form);
+        $element = array_shift($tab);
+        if ($element[1] !== static::TAB_NAME) {
             return;
         }
 
-        if ('/bitrix/admin/iblock_element_edit.php' === $requestedPage) {
-            $this->type = 'element';
-            $this->iblockId = $_REQUEST['IBLOCK_ID'];
-            $mergeFields = [];
-            $mergeProperties = [];
+        foreach ($bxRequest->getPostList() as $name => $value) {
+            $nameTokens = explode('_', $name);
+            $nameTokens = array_values(array_filter($nameTokens));
 
-            $form = static::getForm($this->iblockId, $this->type);
-            // Форма не закастомлена, выходим без обработки
-            if (empty($form)) return;
-
-            $tab = array_pop($form);
-            $element = array_shift($tab);
-            if ($element[1] !== static::TAB_NAME) {
-                return;
+            preg_match('/PROP_(.+)_(.+)__n0__VALUE__(.+)_/', $name, $matches);
+            if (!empty($matches) && $matches[3] === 'TEXT') {
+                $nameTokens = [
+                    'LOC',
+                    $matches[1],
+                    $matches[2],
+                ];
             }
 
-            foreach ($bxRequest->getPostList() as $name => $value) {
-                $nameTokens = explode('_', $name);
-                $nameTokens = array_values(array_filter($nameTokens));
-
-                if ('LOC' === $nameTokens[0] && 'LOC' === $nameTokens[1]) {
-                    if (is_numeric($nameTokens[3])) {
-                        $mergeProperties[$nameTokens[2]][$nameTokens[3]] = reset($value);
-                    } else {
-                        $mergeFields[$nameTokens[2]][$nameTokens[3]] = reset($value);
-                    }
-
-                } else if ('LOC' === $nameTokens[0]) {
-                    if (is_numeric($nameTokens[2])) {
-                        $mergeProperties[$nameTokens[1]][$nameTokens[2]] = reset($value);
-                    } else {
-                        $mergeFields[$nameTokens[1]][$nameTokens[2]] = reset($value);
-                    }
-                }
-
-                if ('PROP' === $nameTokens[0] && 'LOC' === $nameTokens[1]) {
-                    array_splice($nameTokens, 1, 1);
-                }
-
-                if (
-                    'PROP' === $nameTokens[0] && isset($this->languages[$nameTokens[1]]) && (is_numeric($nameTokens[2])
-                    || (in_array($nameTokens[2] . '_' . $nameTokens[3], ['PREVIEW_TEXT', 'DETAIL_TEXT'])))
-                ) {
-
-                    if (in_array($nameTokens[2] . '_' . $nameTokens[3], ['PREVIEW_TEXT', 'DETAIL_TEXT'])) {
-                        $key = $nameTokens[2] . '_' . $nameTokens[3];
-                        if ('TYPE' === $nameTokens[6]) $key .= '_TYPE';
-                        $mergeFields[$nameTokens[1]][$key] = $value;
-                    } else {
-                        $key = 'TEXT';
-                        if ('TYPE' === $nameTokens[5]) $key = 'TYPE';
-                        $mergeProperties[$nameTokens[1]][$nameTokens[2]][$key] = $value;
-                    }
-                }
+            if ('LOC' === $nameTokens[0]) {
+                if ('UF' === $nameTokens[2]) $nameTokens[2] .= '_' . $nameTokens[3];
+                if (is_array($value)) $value = reset($value);
+                $mergeFields[$nameTokens[1]][$nameTokens[2]] = $value;
             }
 
-            $mergedFields = [];
-            foreach ($mergeFields as $langId => $fields) {
-                foreach ($fields as $name => $value) {
-                    if (in_array($name, ['PREVIEW_TEXT_TYPE', 'DETAIL_TEXT_TYPE'])) {
-                        $mergedFields[$name] = $value; // TODO check type
-                        continue;
-                    }
-
-                    $mergedFields[$name][] = $langId . ':' . $value;
+            if ('PROP' === $nameTokens[0]
+                && is_numeric($nameTokens[1])
+                && in_array($nameTokens[2], ['DESCRIPTION'])
+            ) {
+                if (in_array($nameTokens[2], ['DESCRIPTION'])) {
+                    $key = $nameTokens[2];
+                    if ('TYPE' === $nameTokens[5]) $key .= '_TYPE';
+                    $mergeFields[$nameTokens[1]][$key] = $value;
                 }
             }
+        }
 
-            foreach ($mergedFields as $name => $values) {
-                if (is_array($values)) {
-                    $mergedFields[$name] = '{{' . implode('}}{{', $values) . '}}';
-
-                    // todo проверку на превышение длинны строки для varchar
-                }
-            }
-
-            $mergedProperties = [];
-            foreach ($mergeProperties as $langId => $fields) {
-                foreach ($fields as $id => $value) {
-                    if (is_array($value) && isset($value['TEXT'])) {
-                        $mergedProperties[$id]['TEXT'][] = $langId . ':' . $value['TEXT'];
-                        if (!isset($mergedProperties[$id]['TYPE'])) {
-                            $mergedProperties[$id]['TYPE'] = $value['TYPE'];
-                        }
-                        continue;
-                    }
-
-                    $mergedProperties[$id][] = $langId . ':' . $value;
-                }
-            }
-
-            foreach ($mergedProperties as $name => $values) {
-                if (is_array($values) && isset($values['TEXT'])) {
-                    $values['TEXT'] = '{{' . implode('}}{{', $values['TEXT']) . '}}';
-                    $mergedProperties[$name] = $values;
+        $mergedFields = [];
+        foreach ($mergeFields as $langId => $fields) {
+            foreach ($fields as $name => $value) {
+                if (in_array($name, ['DESCRIPTION_TYPE'])) {
+                    $mergedFields[$name] = $value;
                     continue;
                 }
 
-                if (is_array($values)) {
-                    $mergedProperties[$name] = '{{' . implode('}}{{', $values) . '}}';
+                $mergedFields[$name][] = '{{' . $langId . ':' . $value . '}}';
+            }
+        }
+
+
+        $fields = array_map(function($item) { return $item[0]; }, $tab);
+
+        foreach ($mergedFields as $name => $values) {
+            if (is_array($values)) {
+                $mergedFields[$name] = implode('', $values);
+            }
+        }
+        foreach ($mergedFields as $fieldName => $value) {
+            if (in_array($fieldName, $fields)) {
+                $GLOBALS[$fieldName] = $value;
+                $_POST[$fieldName] = $value;
+            }
+        }
+    }
+
+    /**
+     * @throws SystemException
+     */
+    protected function processForElement() {
+        $bxRequest = Application::getInstance()->getContext()->getRequest();
+        $mergeFields     = [];
+        $mergeProperties = [];
+
+        $form = static::getForm($this->iblockId, $this->type);
+        // Форма не закастомлена, выходим без обработки
+        if (empty($form)) return;
+
+        $tab = array_pop($form);
+        $element = array_shift($tab);
+        if ($element[1] !== static::TAB_NAME) {
+            return;
+        }
+
+        foreach ($bxRequest->getPostList() as $name => $value) {
+            $nameTokens = explode('_', $name);
+            $nameTokens = array_values(array_filter($nameTokens));
+
+            if ('LOC' === $nameTokens[0] && 'LOC' === $nameTokens[1]) {
+                if (is_numeric($nameTokens[3])) {
+                    $mergeProperties[$nameTokens[2]][$nameTokens[3]] = reset($value);
+                } else {
+                    $mergeFields[$nameTokens[2]][$nameTokens[3]] = reset($value);
+                }
+
+            } else if ('LOC' === $nameTokens[0]) {
+                if (is_numeric($nameTokens[2])) {
+                    $mergeProperties[$nameTokens[1]][$nameTokens[2]] = reset($value);
+                } else {
+                    $mergeFields[$nameTokens[1]][$nameTokens[2]] = reset($value);
                 }
             }
 
-            $propertyNames = array_map(function($item) {
-                return $item[0];
-            }, $tab);
-
-            $properties = array_filter($propertyNames, function($item) {
-                $t = 'PROPERTY_';
-                return substr($item, 0, strlen($t)) == $t;
-            });
-
-            $fields = array_filter($propertyNames, function($item) {
-                $t = 'PROPERTY_';
-                return substr($item, 0, strlen($t)) != $t;
-            });
-
-            foreach ($mergedProperties as $propId => $value) {
-                if (in_array('PROPERTY_' . $propId, $properties)) {
-                    $_POST['PROP'][$propId] = $value;
-                }
+            if ('PROP' === $nameTokens[0] && 'LOC' === $nameTokens[1]) {
+                array_splice($nameTokens, 1, 1);
             }
 
-            foreach ($mergedFields as $fieldName => $value) {
-                if (in_array($fieldName, $fields)) {
-                    $_POST[$fieldName] = $value;
+            $tmpPropName = $nameTokens[2] . '_' . $nameTokens[3];
+            $validTokens = ['PREVIEW_TEXT', 'DETAIL_TEXT'];
+            if (
+                ($nameTokens[0] === 'PROP') &&
+                (isset($this->languages[$nameTokens[1]])) &&
+                (is_numeric($nameTokens[2]) || (in_array($tmpPropName, $validTokens)))
+            ) {
+
+                if (in_array($tmpPropName, ['PREVIEW_TEXT', 'DETAIL_TEXT'])) {
+                    $key = $tmpPropName;
+                    if ('TYPE' === $nameTokens[6]) $key .= '_TYPE';
+                    $mergeFields[$nameTokens[1]][$key] = $value;
+                } else {
+                    $key = 'TEXT';
+                    if ('TYPE' === $nameTokens[5]) $key = 'TYPE';
+                    $mergeProperties[$nameTokens[1]][$nameTokens[2]][$key] = $value;
                 }
+            }
+        }
+
+        $mergedFields = [];
+        foreach ($mergeFields as $langId => $fields) {
+            foreach ($fields as $name => $value) {
+                if (in_array($name, ['PREVIEW_TEXT_TYPE', 'DETAIL_TEXT_TYPE'])) {
+                    $mergedFields[$name] = $value;
+                    continue;
+                }
+
+                $mergedFields[$name][] = '{{' . $langId . ':' . $value . '}}';
+            }
+        }
+
+        foreach ($mergedFields as $name => $values) {
+            if (is_array($values)) {
+                $mergedFields[$name] = implode('', $values);
+
+                // todo проверку на превышение длинны строки для varchar
+            }
+        }
+
+        $mergedProperties = [];
+        foreach ($mergeProperties as $langId => $fields) {
+            foreach ($fields as $id => $value) {
+                if (is_array($value) && isset($value['TEXT'])) {
+                    $mergedProperties[$id]['TEXT'][] = $langId . ':' . $value['TEXT'];
+                    if (!isset($mergedProperties[$id]['TYPE'])) {
+                        $mergedProperties[$id]['TYPE'] = $value['TYPE'];
+                    }
+                    continue;
+                }
+
+                $mergedProperties[$id][] = $langId . ':' . $value;
+            }
+        }
+
+        foreach ($mergedProperties as $name => $values) {
+            if (is_array($values) && isset($values['TEXT'])) {
+                $values['TEXT'] = '{{' . implode('}}{{', $values['TEXT']) . '}}';
+                $mergedProperties[$name] = $values;
+                continue;
+            }
+
+            if (is_array($values)) {
+                $mergedProperties[$name] = '{{' . implode('}}{{', $values) . '}}';
+            }
+        }
+
+        $propertyNames = array_map(function($item) {
+            return $item[0];
+        }, $tab);
+
+        $properties = array_filter($propertyNames, function($item) {
+            $t = 'PROPERTY_';
+            return substr($item, 0, strlen($t)) == $t;
+        });
+
+        $fields = array_filter($propertyNames, function($item) {
+            $t = 'PROPERTY_';
+            return substr($item, 0, strlen($t)) != $t;
+        });
+
+        foreach ($mergedProperties as $propId => $value) {
+            if (in_array('PROPERTY_' . $propId, $properties)) {
+                $_POST['PROP'][$propId] = $value;
+            }
+        }
+
+        foreach ($mergedFields as $fieldName => $value) {
+            if (in_array($fieldName, $fields)) {
+                $_POST[$fieldName] = $value;
             }
         }
     }
@@ -851,9 +857,10 @@ class IBlockLocales {
     /**
      * Парсит входящую строку на предмет вхождения языкового контента и выдает нужный вариант
      * @param string $str
+     * @param string $default
      * @return string
      */
-    public static function translate($str = '') {
+    public static function translate($str = '', $default = '') {
         $langContent = static::translateParseData($str);
         $curLang = LANGUAGE_ID;
 
@@ -861,15 +868,16 @@ class IBlockLocales {
             return $langContent[$curLang];
         }
 
-        return trim($langContent['default']);
+        return $default;
     }
 
     /**
      * Короткий алиас на метод перевода
      * @param string $str
+     * @param string $default
      * @return mixed
      */
-    public static function t($str = '') {
-        return static::translate($str);
+    public static function t($str = '', $default = '') {
+        return static::translate($str, $default);
     }
 }
