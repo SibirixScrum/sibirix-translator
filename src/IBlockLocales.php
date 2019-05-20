@@ -519,12 +519,12 @@ class IBlockLocales {
     protected function valuesByLang($property) {
         if (false === is_array($property['VALUE'])) {
             $property['VALUE'] = [
-                $property['VALUE']
+                $property['~VALUE']
             ];
         }
 
         $valueKey = key($property['VALUE']);
-        $value = $property['VALUE'][$valueKey];
+        $value = $property['~VALUE'][$valueKey];
 
         $parseValue = $value;
         if (is_array($value) && isset($value['TEXT'])) {
@@ -577,6 +577,9 @@ class IBlockLocales {
         $customFieldId   = $prop["ID"];
         /** @noinspection PhpUnusedLocalVariableInspection */
         $customFieldName = 'LOC_' . $prop["ID"];
+
+        /** @noinspection PhpUnusedLocalVariableInspection */
+        $langCount = count($this->languages);
 
         if (isset($prop['ENTITY_ID'])) {
             include ($this->fieldTemplatesDir . 'user_fields.php');
@@ -777,8 +780,6 @@ class IBlockLocales {
         foreach ($mergedFields as $name => $values) {
             if (is_array($values)) {
                 $mergedFields[$name] = implode('', $values);
-
-                // todo проверку на превышение длинны строки для varchar
             }
         }
 
