@@ -518,8 +518,9 @@ class IBlockLocales {
      */
     protected function valuesByLang($property) {
         if (false === is_array($property['VALUE'])) {
-            $property['VALUE'] = [
-                $property['~VALUE']
+            $property['VALUE'] =
+            $property['~VALUE'] = [
+                isset($property['~VALUE']) ? $property['~VALUE'] : $property['VALUE']
             ];
         }
 
