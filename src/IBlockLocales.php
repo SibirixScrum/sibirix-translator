@@ -832,9 +832,7 @@ class IBlockLocales {
         }
 
         foreach ($mergedFields as $fieldName => $value) {
-            if (in_array($fieldName, $fields)) {
-                $_POST[$fieldName] = $value;
-            }
+            $_POST[$fieldName] = $value;
         }
     }
 
